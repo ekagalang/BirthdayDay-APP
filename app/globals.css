@@ -48,3 +48,8 @@ body {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+
+@keyframes barBounce {
+  from { transform: scaleY(0.4); opacity: 0.6; }
+  to   { transform: scaleY(1.2); opacity: 1; }
+}
