@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd C:\\\\Users\\\\ekaga\\\\OneDrive\\\\Documents\\\\Code\\\\A\\\\bday:*)"
+    ]
+  }
+}

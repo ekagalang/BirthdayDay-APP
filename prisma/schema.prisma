@@ -1,0 +1,25 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Submission {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  quizScore   Int
+  quizAnswers Json
+  wishText    String   @db.Text
+}
+
+model Question {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  question      String
+  modelPath     String   // path ke file .glb
+  options       Json     // ["jawaban1", "jawaban2", "jawaban3", "jawaban4"]
+  correctAnswer String
+  order         Int      @default(0)
+}
