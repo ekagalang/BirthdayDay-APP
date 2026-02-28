@@ -90,8 +90,6 @@ export default function QuizPage() {
   const [currentIntroStep, setCurrentIntroStep] = useState(0)
   const [introTextKey, setIntroTextKey] = useState(0)
 
-  // Quiz scroll state
-  const quizRef = useRef<HTMLDivElement>(null)
   const [currentQ, setCurrentQ] = useState(0)
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({})
   const [lockedQ, setLockedQ] = useState<Set<number>>(new Set())
@@ -126,30 +124,8 @@ export default function QuizPage() {
     return () => ctx.revert()
   }, [stage])
 
-  // Quiz scroll triggers
-  useEffect(() => {
-    if (stage !== 'quiz' || questions.length === 0) return
-    const ctx = gsap.context(() => {
-      questions.forEach((_, i) => {
-        ScrollTrigger.create({
-          trigger: `#quiz-step-${i}`,
-          start: 'top center',
-          onEnter: () => setCurrentQ(i),
-          onEnterBack: () => setCurrentQ(i),
-        })
-      })
-      ScrollTrigger.create({
-        trigger: '#quiz-end',
-        start: 'top center',
-        onEnter: () => {
-          if (Object.keys(selectedAnswers).length === questions.length) {
-            finishQuiz()
-          }
-        },
-      })
-    }, quizRef)
-    return () => ctx.revert()
-  }, [stage, questions])
+  // Auto-advance timer ref (biar bisa di-cancel kalau perlu)
+  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const startCountdown = () => {
     setStage('countdown')
@@ -174,6 +150,13 @@ export default function QuizPage() {
     const isCorrect = option === questions[qIndex].correctAnswer
     if (isCorrect) setScore(s => s + 1)
     setAnswers(prev => ({ ...prev, [qId]: option }))
+
+    // Auto-advance ke soal berikutnya setelah 2 detik
+    if (qIndex < questions.length - 1) {
+      advanceTimerRef.current = setTimeout(() => {
+        setCurrentQ(qIndex + 1)
+      }, 2000)
+    }
   }
 
   const finishQuiz = () => {
@@ -393,31 +376,34 @@ export default function QuizPage() {
   const q = questions[currentQ]
   const selectedForCurrent = selectedAnswers[currentQ]
   const isLocked = lockedQ.has(currentQ)
-  const allAnswered = Object.keys(selectedAnswers).length === questions.length
+  const isLastQ = currentQ === questions.length - 1
+  const uniqueOptions = [...new Set(q?.options ?? [])]
 
   return (
-    <div ref={quizRef} className="relative">
-      {/* Sticky quiz display */}
-      <div className="sticky top-0 h-screen flex flex-col bg-gray-950 z-10 overflow-hidden">
+    <div className="min-h-screen flex flex-col bg-gray-950 overflow-hidden">
 
-        {/* Header */}
-        <div className="px-6 pt-6 pb-3 pointer-events-none">
-          <div className="flex justify-between items-center mb-2">
-            <p className="text-gray-400 text-xs">
-              Soal <span className="text-white font-bold">{currentQ + 1}</span> / {questions.length}
-            </p>
-            <p className="text-gray-400 text-xs">
-              ✓ <span className="text-green-400 font-bold">{score}</span> benar
-            </p>
-          </div>
-          <div className="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-pink-500 h-1.5 rounded-full transition-all duration-500"
-              style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }} />
-          </div>
+      {/* Header progress */}
+      <div className="px-6 pt-6 pb-3 shrink-0">
+        <div className="flex justify-between items-center mb-2">
+          <p className="text-gray-400 text-xs">
+            Soal <span className="text-white font-bold">{currentQ + 1}</span> / {questions.length}
+          </p>
+          <p className="text-gray-400 text-xs">
+            ✓ <span className="text-green-400 font-bold">{score}</span> benar
+          </p>
         </div>
+        <div className="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
+          <div className="bg-pink-500 h-1.5 rounded-full transition-all duration-500"
+            style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }} />
+        </div>
+      </div>
+
+      {/* Konten soal — key berubah tiap soal supaya animasi re-trigger */}
+      <div key={currentQ} className="flex flex-col flex-1 overflow-hidden"
+        style={{ animation: 'quizSlideIn 0.35s ease forwards' }}>
 
         {/* 3D Fish Model */}
-        <div className="mx-6 rounded-2xl overflow-hidden flex-1" style={{ maxHeight: '40vh', minHeight: '180px' }}>
+        <div className="mx-6 rounded-2xl overflow-hidden shrink-0" style={{ height: '38vh', minHeight: '160px' }}>
           <Suspense fallback={
             <div className="w-full h-full bg-gray-900 flex items-center justify-center">
               <p className="text-gray-500 text-sm">Loading ikan...</p>
@@ -433,7 +419,7 @@ export default function QuizPage() {
             <>
               <h2 className="text-white text-lg font-bold text-center">{q.question}</h2>
               <div className="grid grid-cols-2 gap-2">
-                {q.options.map((opt) => {
+                {uniqueOptions.map((opt, optIdx) => {
                   let cls = 'bg-gray-900 text-white border border-gray-800'
                   if (isLocked) {
                     if (opt === q.correctAnswer) cls = 'bg-green-700 text-white border border-green-500'
@@ -442,7 +428,7 @@ export default function QuizPage() {
                   }
                   return (
                     <button
-                      key={opt}
+                      key={optIdx}
                       onClick={() => handleSelect(currentQ, q.id, opt)}
                       disabled={isLocked}
                       className={`${cls} rounded-2xl px-3 py-3 text-sm font-medium text-left transition-all active:scale-95`}
@@ -455,20 +441,18 @@ export default function QuizPage() {
 
               {/* Feedback setelah jawab */}
               {isLocked && (
-                <p className="text-center text-sm animate-fade-in"
-                  style={{ color: selectedForCurrent === q.correctAnswer ? '#4ade80' : '#f87171' }}>
-                  {selectedForCurrent === q.correctAnswer
-                    ? '✓ Benar! Scroll untuk soal berikutnya →'
-                    : `✗ Jawaban: ${q.correctAnswer} • Scroll lanjut →`}
+                <p className="text-center text-sm" style={{ color: selectedForCurrent === q.correctAnswer ? '#4ade80' : '#f87171', animation: 'quizSlideIn 0.3s ease forwards' }}>
+                  {selectedForCurrent === q.correctAnswer ? '✓ Benar!' : `✗ Jawaban: ${q.correctAnswer}`}
+                  {!isLastQ && <span className="text-gray-400"> • Lanjut otomatis...</span>}
                 </p>
               )}
 
-              {/* Tombol selesai di soal terakhir */}
-              {isLocked && currentQ === questions.length - 1 && allAnswered && (
+              {/* Tombol lihat hasil di soal terakhir */}
+              {isLocked && isLastQ && (
                 <button
                   onClick={finishQuiz}
                   className="w-full py-3 rounded-2xl text-white font-bold transition-transform active:scale-95"
-                  style={{ background: 'linear-gradient(135deg, #ff6b9d, #a78bfa)' }}
+                  style={{ background: 'linear-gradient(135deg, #ff6b9d, #a78bfa)', animation: 'quizSlideIn 0.4s ease forwards' }}
                 >
                   Lihat Hasil 🏆
                 </button>
@@ -478,13 +462,12 @@ export default function QuizPage() {
         </div>
       </div>
 
-      {/* Scroll spacers */}
-      <div className="relative z-0">
-        {questions.map((_, i) => (
-          <div key={i} id={`quiz-step-${i}`} className="h-screen" />
-        ))}
-        <div id="quiz-end" className="h-32" />
-      </div>
+      <style jsx>{`
+        @keyframes quizSlideIn {
+          from { opacity: 0; transform: translateX(24px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
     </div>
   )
 }
